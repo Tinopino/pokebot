@@ -59,17 +59,34 @@ ROUND_INTERVAL_JITTER = (0, 10)  # extra seconds added after a full sweep
 # Dutch stock keywords (fallback if JSON-LD isn't present)
 IN_STOCK_KEYWORDS = [
     "op voorraad", "op=voorraad", "online op voorraad", "direct leverbaar", "morgen in huis",
-    "in stock", "available"
+    "in stock", "available","Vandaag besteld ? Snel in huis!","Vandaag besteld","levering aan huis"
 ]
 OUT_STOCK_KEYWORDS = [
     "niet op voorraad", "uitverkocht", "tijdelijk uitverkocht", "niet beschikbaar","niet leverbaar",
-    "currently unavailable", "out of stock"
+    "currently unavailable", "out of stock","Online tijdelijk uitverkocht","hou me op de hoogte"
 ]
 PREORDER_KEYWORDS = ["pre-order", "preorder", "pre-orderen", "verwacht"]
 
 # Regex for JSON-LD availability
 AVAIL_PATTERN = re.compile(r"\bavailability\b\"?\s*:\s*\"(.*?)\"", re.IGNORECASE)
 NAME_PATTERN = re.compile(r"\b\"name\"\s*:\s*\"(.*?)\"")
+
+MAX_MSG = 2000
+SAFE_LIMIT = 1900  # leave room for headers / formatting
+
+def chunk_text(text: str, limit: int = SAFE_LIMIT):
+    buf = []
+    size = 0
+    for line in text.splitlines(keepends=True):
+        if size + len(line) > limit and buf:
+            yield "".join(buf)
+            buf = [line]
+            size = len(line)
+        else:
+            buf.append(line)
+            size += len(line)
+    if buf:
+        yield "".join(buf)
 
 @dataclass
 class TrackedItem:
@@ -374,8 +391,8 @@ async def track_root(ctx: commands.Context):
 
 @track_root.command(name="add")
 async def track_add(ctx: commands.Context, url: str, nickname: Optional[str] = None):
-    if not ("bol.com" in url or "mediamarkt" in url):
-        await ctx.send("Please provide a bol.com or mediamarkt.nl product URL.")
+    if not ("bol.com" in url or "mediamarkt" in url or "dreamland" in url or "pocketgames" in url):
+        await ctx.send("Please provide a bol.com, mediamarkt.nl,dreamland or pocketgames product URL.")
         return
     if cfg.items is None:
         cfg.items = {}
@@ -414,8 +431,13 @@ async def track_list(ctx: commands.Context):
     if not cfg.items:
         await ctx.send("No URLs are being tracked yet. Use `!track add <url>`.")
         return
+
     lines = [pretty_item_line(it) for it in cfg.items.values()]
-    await ctx.send("Tracked items:\n" + "\n".join(lines))
+    header = "Tracked items:\n"
+    text = header + "\n".join(lines)
+
+    for chunk in chunk_text(text):
+        await ctx.send(chunk)
 
 
 # ------------------------- Run -------------------------
